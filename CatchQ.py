@@ -1,5 +1,5 @@
 import streamlit as st
-import whisper
+import openai-whisper
 import pandas as pd
 import torch
 import numpy as np
