@@ -3,7 +3,7 @@ import speech_recognition as sr
 import pandas as pd
 import torch
 import numpy as np
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go  # Replaced matplotlib with plotly
 from sklearn.metrics.pairwise import cosine_similarity
 from transformers import pipeline, T5ForConditionalGeneration, T5Tokenizer
 from sentence_transformers import SentenceTransformer
@@ -92,14 +92,19 @@ if audio_file:
         embeddings = sbert_model.encode(all_questions)
         similarity_matrix = cosine_similarity(embeddings)
 
-        # Plot Similarity Matrix
-        fig, ax = plt.subplots(figsize=(10, 8))
-        ax.imshow(similarity_matrix, cmap="coolwarm")
-        ax.set_xticks(range(len(all_questions)))
-        ax.set_yticks(range(len(all_questions)))
-        ax.set_xticklabels(all_questions, rotation=90)
-        ax.set_yticklabels(all_questions)
-        st.pyplot(fig)
+        # Plot Similarity Matrix using Plotly
+        fig = go.Figure(data=go.Heatmap(
+            z=similarity_matrix,
+            x=all_questions,
+            y=all_questions,
+            colorscale="Viridis"
+        ))
+        fig.update_layout(
+            xaxis=dict(tickangle=90),
+            yaxis=dict(autorange="reversed"),
+            title="Question Similarity Matrix"
+        )
+        st.plotly_chart(fig)
 
         # Week-by-Week Comparison
         st.subheader("Week-by-Week Comparison")
