@@ -1,6 +1,7 @@
 import streamlit as st
 import speech_recognition as sr
 from io import BytesIO
+from pydub import AudioSegment
 import re
 import pandas as pd
 
@@ -32,27 +33,39 @@ def categorize_question(question):
 st.title("CatchQ Prototype")
 
 # Audio file upload
-uploaded_file = st.file_uploader("Upload a WAV file", type=["wav"])
+uploaded_file = st.file_uploader("Upload an audio file", type=["wav", "mp3"])
 if uploaded_file:
     with BytesIO(uploaded_file.getvalue()) as audio_file:
-        with sr.AudioFile(audio_file) as source:
-            audio = recognizer.record(source)
-            try:
-                # Use Google Web Speech API for transcription
-                text = recognizer.recognize_google(audio)
-                st.subheader("Transcript")
-                st.write(text)
+        try:
+            # Convert MP3 to WAV if necessary
+            if uploaded_file.type == "audio/mp3":
+                audio = AudioSegment.from_mp3(audio_file)
+                wav_file = BytesIO()
+                audio.export(wav_file, format="wav")
+                wav_file.seek(0)
+                audio_file = wav_file
 
-                # Extract questions
-                questions = extract_questions(text)
-                if questions:
-                    st.subheader("Extracted Questions")
-                    categories = [categorize_question(q) for q in questions]
-                    df = pd.DataFrame({"Question": questions, "Category": categories})
-                    st.table(df)
-                else:
-                    st.write("No questions found in the transcript.")
-            except sr.UnknownValueError:
-                st.error("Google Web Speech API could not understand the audio.")
-            except sr.RequestError:
-                st.error("Could not request results from Google Web Speech API.")
+            # Process the audio file
+            with sr.AudioFile(audio_file) as source:
+                audio = recognizer.record(source)
+                try:
+                    # Use Google Web Speech API for transcription
+                    text = recognizer.recognize_google(audio)
+                    st.subheader("Transcript")
+                    st.write(text)
+
+                    # Extract questions
+                    questions = extract_questions(text)
+                    if questions:
+                        st.subheader("Extracted Questions")
+                        categories = [categorize_question(q) for q in questions]
+                        df = pd.DataFrame({"Question": questions, "Category": categories})
+                        st.table(df)
+                    else:
+                        st.write("No questions found in the transcript.")
+                except sr.UnknownValueError:
+                    st.error("Google Web Speech API could not understand the audio.")
+                except sr.RequestError:
+                    st.error("Could not request results from Google Web Speech API.")
+        except Exception as e:
+            st.error(f"Error processing audio file: {e}")
