@@ -1,5 +1,5 @@
 import streamlit as st
-import whisper
+import speech_recognition as sr
 import pandas as pd
 import torch
 import numpy as np
@@ -10,12 +10,12 @@ from sentence_transformers import SentenceTransformer
 import datetime
 import os
 
-# Load Whisper ASR Model
+# Load SpeechRecognition
 st.title("CatchQ: AI-Powered Question Analyzer")
 
 @st.cache_resource
-def load_whisper_model():
-    return whisper.load_model("small")
+def load_speech_recognizer():
+    return sr.Recognizer()
 
 @st.cache_resource
 def load_question_generation_model():
@@ -31,7 +31,7 @@ def load_zero_shot_classifier():
 def load_sentence_transformer():
     return SentenceTransformer("all-MiniLM-L6-v2")
 
-whisper_model = load_whisper_model()
+recognizer = load_speech_recognizer()
 qg_model, qg_tokenizer = load_question_generation_model()
 classifier = load_zero_shot_classifier()
 sbert_model = load_sentence_transformer()
@@ -45,8 +45,10 @@ if audio_file:
     # Transcribe Audio
     st.write("Transcribing...")
     try:
-        result = whisper_model.transcribe("temp_audio.wav")
-        transcribed_text = st.text_area("Edit Transcribed Text", result["text"])
+        with sr.AudioFile("temp_audio.wav") as source:
+            audio = recognizer.record(source)
+            transcribed_text = recognizer.recognize_google(audio)
+            transcribed_text = st.text_area("Edit Transcribed Text", transcribed_text)
     except Exception as e:
         st.error(f"Transcription failed: {e}")
         st.stop()
