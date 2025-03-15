@@ -1,135 +1,87 @@
 import streamlit as st
-import speech_recognition as sr
 import pandas as pd
-import torch
-import numpy as np
-import plotly.graph_objects as go
-from transformers import T5ForConditionalGeneration, T5Tokenizer, pipeline
-import datetime
-import os
+from datetime import datetime
+import difflib  # Built-in, no extra dependency
+import numpy as np  # Lightweight for trends
 
-# Manual cosine similarity implementation
-def cosine_similarity(embeddings):
-    """
-    Compute the cosine similarity matrix for a set of embeddings.
-    :param embeddings: A 2D numpy array of shape (n_samples, n_features).
-    :return: A 2D numpy array of shape (n_samples, n_samples) containing pairwise cosine similarities.
-    """
-    # Normalize the embeddings
-    norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
-    normalized_embeddings = embeddings / norms
+# Hardcoded taxonomy (customize as needed)
+TAXONOMY = {
+    "Definition": ["what is", "define", "meaning"],
+    "Procedure": ["how to", "steps", "process"],
+    "Comparison": ["difference", "similarity", "vs"],
+}
 
-    # Compute the cosine similarity matrix
-    similarity_matrix = np.dot(normalized_embeddings, normalized_embeddings.T)
-    return similarity_matrix
+# Mock data storage (replace with CSV later)
+if "questions" not in st.session_state:
+    st.session_state.questions = []
 
-# Load SpeechRecognition
-st.title("CatchQ: AI-Powered Question Analyzer")
+# -------------------------
+# Core Functions (Hardcoded)
+# -------------------------
+def generate_questions(text):
+    """Rule-based question generation (minimal logic)."""
+    sentences = [s.strip() for s in text.split(". ") if s]
+    return [f"What is {s}?" for s in sentences[:3]]  # Simple template
 
-@st.cache_resource
-def load_speech_recognizer():
-    return sr.Recognizer()
+def categorize_question(question):
+    """Keyword-based categorization (no ML)."""
+    for category, keywords in TAXONOMY.items():
+        if any(kw in question.lower() for kw in keywords):
+            return category
+    return "Uncategorized"
 
-@st.cache_resource
-def load_question_generation_model():
-    model = T5ForConditionalGeneration.from_pretrained("valhalla/t5-small-qa-qg-hl")
-    tokenizer = T5Tokenizer.from_pretrained("valhalla/t5-small-qa-qg-hl")
-    return model, tokenizer
+def compare_questions(new_questions, past_questions):
+    """Basic similarity check (built-in difflib)."""
+    similar = []
+    for new_q in new_questions:
+        for past_q in past_questions:
+            ratio = difflib.SequenceMatcher(None, new_q, past_q).ratio()
+            if ratio > 0.7:  # Threshold adjustable
+                similar.append((new_q, past_q, ratio))
+    return similar
 
-@st.cache_resource
-def load_zero_shot_classifier():
-    return pipeline("zero-shot-classification", model="facebook/bart-large-mnli")
+# -------------------------
+# Streamlit UI
+# -------------------------
+st.title("CatchQ Prototype")
 
-@st.cache_resource
-def load_embeddings_model():
-    from gensim.models import KeyedVectors
-    import gensim.downloader as api
-    return api.load("glove-wiki-gigaword-100")  # Lightweight embeddings model
+# 1. Mock "Audio Upload" → Direct text input (skip STT for now)
+text = st.text_area("Paste discussion text (simulates speech-to-text):")
 
-recognizer = load_speech_recognizer()
-qg_model, qg_tokenizer = load_question_generation_model()
-classifier = load_zero_shot_classifier()
-embeddings_model = load_embeddings_model()
-
-# Upload Audio File
-audio_file = st.file_uploader("Upload an audio file", type=["wav", "mp3", "m4a"])
-if audio_file:
-    with open("temp_audio.wav", "wb") as f:
-        f.write(audio_file.read())
-
-    # Transcribe Audio
-    st.write("Transcribing...")
-    try:
-        with sr.AudioFile("temp_audio.wav") as source:
-            audio = recognizer.record(source)
-            transcribed_text = recognizer.recognize_google(audio)
-            transcribed_text = st.text_area("Edit Transcribed Text", transcribed_text)
-    except Exception as e:
-        st.error(f"Transcription failed: {e}")
-        st.stop()
-
-    # Extract Questions
-    st.subheader("Extracted Questions")
-    def extract_questions(text):
-        inputs = qg_tokenizer.encode("generate questions: " + text, return_tensors="pt", max_length=512, truncation=True)
-        outputs = qg_model.generate(inputs, max_length=50, num_return_sequences=5)
-        return [qg_tokenizer.decode(output, skip_special_tokens=True) for output in outputs]
-
-    questions = extract_questions(transcribed_text)
+if text:
+    # 2. Generate questions
+    questions = generate_questions(text)
+    st.subheader("Generated Questions")
     for q in questions:
         st.write(f"- {q}")
 
-    # Categorize Questions
-    st.subheader("Categorized Questions")
-    taxonomy = ["Conceptual", "Technical", "Application", "Miscellaneous"]
-    def categorize_question(question, taxonomy):
-        result = classifier(question, taxonomy)
-        return result["labels"][0]  # Return the top category
+    # 3. Categorize questions
+    st.subheader("Categories")
+    categories = [categorize_question(q) for q in questions]
+    df = pd.DataFrame({"Question": questions, "Category": categories})
+    st.table(df)
 
-    categories = [categorize_question(q, taxonomy) for q in questions]
-    for q, c in zip(questions, categories):
-        st.write(f"**{q}** → {c}")
+    # 4. Compare with past questions (mock persistence)
+    if st.button("Save for weekly comparison"):
+        st.session_state.questions.extend([
+            {"question": q, "category": c, "date": datetime.now()}
+            for q, c in zip(questions, categories)
+        ])
 
-    # Save Questions for Week-by-Week Comparison
-    def save_questions(questions, categories):
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d")
-        data = {"question": questions, "category": categories, "timestamp": [timestamp] * len(questions)}
-        df = pd.DataFrame(data)
-        df.to_csv("questions.csv", mode="a", header=not os.path.exists("questions.csv"), index=False)
+# 5. Show trends (mock data)
+if st.session_state.questions:
+    st.subheader("Trends")
+    history = pd.DataFrame(st.session_state.questions)
+    history["date"] = pd.to_datetime(history["date"]).dt.strftime("%Y-%m-%d")
+    trend_data = history.groupby(["date", "category"]).size().unstack(fill_value=0)
+    st.line_chart(trend_data)
 
-    save_questions(questions, categories)
-
-    # Trend Analysis
-    st.subheader("Trend Analysis")
-    if os.path.exists("questions.csv"):
-        df = pd.read_csv("questions.csv")
-        all_questions = df["question"].tolist()
-
-        # Compute embeddings using GloVe
-        embeddings = np.array([np.mean([embeddings_model[word] for word in question.split() if word in embeddings_model] or [np.zeros(100)], axis=0) for question in all_questions])
-        similarity_matrix = cosine_similarity(embeddings)
-
-        # Plot Similarity Matrix using Plotly
-        fig = go.Figure(data=go.Heatmap(
-            z=similarity_matrix,
-            x=all_questions,
-            y=all_questions,
-            colorscale="Viridis"
-        ))
-        fig.update_layout(
-            xaxis=dict(tickangle=90),
-            yaxis=dict(autorange="reversed"),
-            title="Question Similarity Matrix"
-        )
-        st.plotly_chart(fig)
-
-        # Week-by-Week Comparison
-        st.subheader("Week-by-Week Comparison")
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
-        weekly_questions = df.groupby(df["timestamp"].dt.strftime("%Y-%U"))["question"].apply(list).reset_index()
-        st.write(weekly_questions)
-
-    # Download Results
-    st.subheader("Download Results")
-    results_df = pd.DataFrame({"Questions": questions, "Categories": categories})
-    st.download_button("Download as CSV", results_df.to_csv(index=False), file_name="results.csv", mime="text/csv")
+# 6. Similarity check (compare all saved questions)
+if len(st.session_state.questions) > 1:
+    st.subheader("Similar Questions")
+    past_questions = [q["question"] for q in st.session_state.questions[:-1]]
+    new_questions = questions
+    similar = compare_questions(new_questions, past_questions)
+    if similar:
+        for new_q, past_q, ratio in similar:
+            st.write(f"**New:** {new_q}\n\n**Past:** {past_q}\n\nSimilarity: {ratio:.2f}")
