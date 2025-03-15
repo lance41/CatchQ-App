@@ -1,3 +1,4 @@
 streamlit==1.29.0
 SpeechRecognition==3.10.0
 pandas==2.0.3
+pydub==0.25.1
