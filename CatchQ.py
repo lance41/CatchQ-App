@@ -1,29 +1,19 @@
 import streamlit as st
-import numpy as np
-import whisper  # Only STT dependency (installs torch automatically)
+import whisper
 from io import BytesIO
-import sounddevice as sd  # For audio recording
-from scipy.io.wavfile import write
 import tempfile
 
-# Hardcoded Taxonomy (customize keywords)
+# Hardcoded taxonomy (customize as needed)
 TAXONOMY = {
     "Content": ["what is", "define", "explain", "describe"],
     "Context": ["why is", "background", "history", "related to"],
     "Contest": ["challenge", "disagree", "alternative", "critique"]
 }
 
-# Minimal Whisper model (tiny.en ~75MB)
+# Load Whisper model
 @st.cache_resource
 def load_whisper():
     return whisper.load_model("tiny.en")
-
-# Audio recording
-def record_audio(duration=5, fs=44100):
-    st.write("Recording...")
-    recording = sd.rec(int(duration * fs), samplerate=fs, channels=1)
-    sd.wait()
-    return fs, recording
 
 # Categorization (keyword-based)
 def categorize_question(question):
@@ -36,23 +26,12 @@ def categorize_question(question):
 # --- UI ---
 st.title("CatchQ Prototype")
 
-# Audio input choice
-input_type = st.radio("Input type:", ["Record Audio (5s)", "Upload WAV"])
-
-# Audio handling
-audio = None
-if input_type == "Record Audio (5s)":
-    if st.button("Start Recording"):
-        fs, audio = record_audio()
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-            write(f.name, fs, audio)
-            st.session_state.audio_path = f.name
-elif input_type == "Upload WAV":
-    uploaded = st.file_uploader("Upload WAV", type=["wav"])
-    if uploaded:
-        st.session_state.audio_path = uploaded.name
-        with open(uploaded.name, "wb") as f:
-            f.write(uploaded.getvalue())
+# Audio file upload
+uploaded_file = st.file_uploader("Upload a WAV file", type=["wav"])
+if uploaded_file:
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+        f.write(uploaded_file.getvalue())
+        st.session_state.audio_path = f.name
 
 # Transcribe & Process
 if "audio_path" in st.session_state:
