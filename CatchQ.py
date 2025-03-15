@@ -1,7 +1,8 @@
 import streamlit as st
-import whisper
+import speech_recognition as sr
 from io import BytesIO
-import tempfile
+import re
+import pandas as pd
 
 # Hardcoded taxonomy (customize as needed)
 TAXONOMY = {
@@ -10,10 +11,8 @@ TAXONOMY = {
     "Contest": ["challenge", "disagree", "alternative", "critique"]
 }
 
-# Load Whisper model
-@st.cache_resource
-def load_whisper():
-    return whisper.load_model("tiny.en")
+# Initialize recognizer
+recognizer = sr.Recognizer()
 
 # Extract questions from text
 def extract_questions(text):
@@ -35,25 +34,25 @@ st.title("CatchQ Prototype")
 # Audio file upload
 uploaded_file = st.file_uploader("Upload a WAV file", type=["wav"])
 if uploaded_file:
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-        f.write(uploaded_file.getvalue())
-        st.session_state.audio_path = f.name
+    with BytesIO(uploaded_file.getvalue()) as audio_file:
+        with sr.AudioFile(audio_file) as source:
+            audio = recognizer.record(source)
+            try:
+                # Use Google Web Speech API for transcription
+                text = recognizer.recognize_google(audio)
+                st.subheader("Transcript")
+                st.write(text)
 
-# Transcribe & Process
-if "audio_path" in st.session_state:
-    model = load_whisper()
-    result = model.transcribe(st.session_state.audio_path)
-    text = result["text"]
-    
-    st.subheader("Transcript")
-    st.write(text)
-    
-    # Extract questions
-    questions = extract_questions(text)
-    if questions:
-        st.subheader("Extracted Questions")
-        categories = [categorize_question(q) for q in questions]
-        df = pd.DataFrame({"Question": questions, "Category": categories})
-        st.table(df)
-    else:
-        st.write("No questions found in the transcript.")
+                # Extract questions
+                questions = extract_questions(text)
+                if questions:
+                    st.subheader("Extracted Questions")
+                    categories = [categorize_question(q) for q in questions]
+                    df = pd.DataFrame({"Question": questions, "Category": categories})
+                    st.table(df)
+                else:
+                    st.write("No questions found in the transcript.")
+            except sr.UnknownValueError:
+                st.error("Google Web Speech API could not understand the audio.")
+            except sr.RequestError:
+                st.error("Could not request results from Google Web Speech API.")
