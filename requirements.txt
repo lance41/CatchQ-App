@@ -1,8 +1,8 @@
-numpy==1.25.2
+numpy==1.23.5  # Downgrade numpy to a stable version
 numba==0.59.0
 streamlit==1.32.0
 pandas==2.1.4
-plotly==5.18.0  # Added plotly
+plotly==5.18.0
 scikit-learn==1.3.2
 transformers==4.36.2
 sentence-transformers==2.2.2
