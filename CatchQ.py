@@ -4,8 +4,7 @@ import pandas as pd
 import torch
 import numpy as np
 import plotly.graph_objects as go
-from transformers import pipeline, T5ForConditionalGeneration, T5Tokenizer
-from sentence_transformers import SentenceTransformer
+from transformers import T5ForConditionalGeneration, T5Tokenizer, pipeline
 import datetime
 import os
 
@@ -29,43 +28,28 @@ st.title("CatchQ: AI-Powered Question Analyzer")
 
 @st.cache_resource
 def load_speech_recognizer():
-    try:
-        return sr.Recognizer()
-    except Exception as e:
-        st.error(f"Failed to load speech recognizer: {e}")
-        st.stop()
+    return sr.Recognizer()
 
 @st.cache_resource
 def load_question_generation_model():
-    try:
-        model = T5ForConditionalGeneration.from_pretrained("valhalla/t5-small-qa-qg-hl")
-        tokenizer = T5Tokenizer.from_pretrained("valhalla/t5-small-qa-qg-hl")
-        return model, tokenizer
-    except Exception as e:
-        st.error(f"Failed to load question generation model: {e}")
-        st.stop()
+    model = T5ForConditionalGeneration.from_pretrained("valhalla/t5-small-qa-qg-hl")
+    tokenizer = T5Tokenizer.from_pretrained("valhalla/t5-small-qa-qg-hl")
+    return model, tokenizer
 
 @st.cache_resource
 def load_zero_shot_classifier():
-    try:
-        return pipeline("zero-shot-classification", model="facebook/bart-large-mnli")
-    except Exception as e:
-        st.error(f"Failed to load zero-shot classifier: {e}")
-        st.stop()
+    return pipeline("zero-shot-classification", model="facebook/bart-large-mnli")
 
 @st.cache_resource
-def load_sentence_transformer():
-    try:
-        return SentenceTransformer("all-MiniLM-L6-v2")
-    except Exception as e:
-        st.error(f"Failed to load sentence transformer: {e}")
-        st.stop()
+def load_embeddings_model():
+    from gensim.models import KeyedVectors
+    import gensim.downloader as api
+    return api.load("glove-wiki-gigaword-100")  # Lightweight embeddings model
 
-# Load models
 recognizer = load_speech_recognizer()
 qg_model, qg_tokenizer = load_question_generation_model()
 classifier = load_zero_shot_classifier()
-sbert_model = load_sentence_transformer()
+embeddings_model = load_embeddings_model()
 
 # Upload Audio File
 audio_file = st.file_uploader("Upload an audio file", type=["wav", "mp3", "m4a"])
@@ -87,13 +71,9 @@ if audio_file:
     # Extract Questions
     st.subheader("Extracted Questions")
     def extract_questions(text):
-        try:
-            inputs = qg_tokenizer.encode("generate questions: " + text, return_tensors="pt", max_length=512, truncation=True)
-            outputs = qg_model.generate(inputs, max_length=50, num_return_sequences=5)
-            return [qg_tokenizer.decode(output, skip_special_tokens=True) for output in outputs]
-        except Exception as e:
-            st.error(f"Failed to extract questions: {e}")
-            return []
+        inputs = qg_tokenizer.encode("generate questions: " + text, return_tensors="pt", max_length=512, truncation=True)
+        outputs = qg_model.generate(inputs, max_length=50, num_return_sequences=5)
+        return [qg_tokenizer.decode(output, skip_special_tokens=True) for output in outputs]
 
     questions = extract_questions(transcribed_text)
     for q in questions:
@@ -103,12 +83,8 @@ if audio_file:
     st.subheader("Categorized Questions")
     taxonomy = ["Conceptual", "Technical", "Application", "Miscellaneous"]
     def categorize_question(question, taxonomy):
-        try:
-            result = classifier(question, taxonomy)
-            return result["labels"][0]  # Return the top category
-        except Exception as e:
-            st.error(f"Failed to categorize question: {e}")
-            return "Unknown"
+        result = classifier(question, taxonomy)
+        return result["labels"][0]  # Return the top category
 
     categories = [categorize_question(q, taxonomy) for q in questions]
     for q, c in zip(questions, categories):
@@ -116,46 +92,42 @@ if audio_file:
 
     # Save Questions for Week-by-Week Comparison
     def save_questions(questions, categories):
-        try:
-            timestamp = datetime.datetime.now().strftime("%Y-%m-%d")
-            data = {"question": questions, "category": categories, "timestamp": [timestamp] * len(questions)}
-            df = pd.DataFrame(data)
-            df.to_csv("questions.csv", mode="a", header=not os.path.exists("questions.csv"), index=False)
-        except Exception as e:
-            st.error(f"Failed to save questions: {e}")
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d")
+        data = {"question": questions, "category": categories, "timestamp": [timestamp] * len(questions)}
+        df = pd.DataFrame(data)
+        df.to_csv("questions.csv", mode="a", header=not os.path.exists("questions.csv"), index=False)
 
     save_questions(questions, categories)
 
     # Trend Analysis
     st.subheader("Trend Analysis")
     if os.path.exists("questions.csv"):
-        try:
-            df = pd.read_csv("questions.csv")
-            all_questions = df["question"].tolist()
-            embeddings = sbert_model.encode(all_questions)
-            similarity_matrix = cosine_similarity(embeddings)  # Use the manual implementation
+        df = pd.read_csv("questions.csv")
+        all_questions = df["question"].tolist()
 
-            # Plot Similarity Matrix using Plotly
-            fig = go.Figure(data=go.Heatmap(
-                z=similarity_matrix,
-                x=all_questions,
-                y=all_questions,
-                colorscale="Viridis"
-            ))
-            fig.update_layout(
-                xaxis=dict(tickangle=90),
-                yaxis=dict(autorange="reversed"),
-                title="Question Similarity Matrix"
-            )
-            st.plotly_chart(fig)
+        # Compute embeddings using GloVe
+        embeddings = np.array([np.mean([embeddings_model[word] for word in question.split() if word in embeddings_model] or [np.zeros(100)], axis=0) for question in all_questions])
+        similarity_matrix = cosine_similarity(embeddings)
 
-            # Week-by-Week Comparison
-            st.subheader("Week-by-Week Comparison")
-            df["timestamp"] = pd.to_datetime(df["timestamp"])
-            weekly_questions = df.groupby(df["timestamp"].dt.strftime("%Y-%U"))["question"].apply(list).reset_index()
-            st.write(weekly_questions)
-        except Exception as e:
-            st.error(f"Failed to analyze trends: {e}")
+        # Plot Similarity Matrix using Plotly
+        fig = go.Figure(data=go.Heatmap(
+            z=similarity_matrix,
+            x=all_questions,
+            y=all_questions,
+            colorscale="Viridis"
+        ))
+        fig.update_layout(
+            xaxis=dict(tickangle=90),
+            yaxis=dict(autorange="reversed"),
+            title="Question Similarity Matrix"
+        )
+        st.plotly_chart(fig)
+
+        # Week-by-Week Comparison
+        st.subheader("Week-by-Week Comparison")
+        df["timestamp"] = pd.to_datetime(df["timestamp"])
+        weekly_questions = df.groupby(df["timestamp"].dt.strftime("%Y-%U"))["question"].apply(list).reset_index()
+        st.write(weekly_questions)
 
     # Download Results
     st.subheader("Download Results")
