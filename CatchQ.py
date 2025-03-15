@@ -1,87 +1,74 @@
 import streamlit as st
-import pandas as pd
-from datetime import datetime
-import difflib  # Built-in, no extra dependency
-import numpy as np  # Lightweight for trends
+import numpy as np
+import whisper  # Only STT dependency (installs torch automatically)
+from io import BytesIO
+import sounddevice as sd  # For audio recording
+from scipy.io.wavfile import write
+import tempfile
 
-# Hardcoded taxonomy (customize as needed)
+# Hardcoded Taxonomy (customize keywords)
 TAXONOMY = {
-    "Definition": ["what is", "define", "meaning"],
-    "Procedure": ["how to", "steps", "process"],
-    "Comparison": ["difference", "similarity", "vs"],
+    "Content": ["what is", "define", "explain", "describe"],
+    "Context": ["why is", "background", "history", "related to"],
+    "Contest": ["challenge", "disagree", "alternative", "critique"]
 }
 
-# Mock data storage (replace with CSV later)
-if "questions" not in st.session_state:
-    st.session_state.questions = []
+# Minimal Whisper model (tiny.en ~75MB)
+@st.cache_resource
+def load_whisper():
+    return whisper.load_model("tiny.en")
 
-# -------------------------
-# Core Functions (Hardcoded)
-# -------------------------
-def generate_questions(text):
-    """Rule-based question generation (minimal logic)."""
-    sentences = [s.strip() for s in text.split(". ") if s]
-    return [f"What is {s}?" for s in sentences[:3]]  # Simple template
+# Audio recording
+def record_audio(duration=5, fs=44100):
+    st.write("Recording...")
+    recording = sd.rec(int(duration * fs), samplerate=fs, channels=1)
+    sd.wait()
+    return fs, recording
 
+# Categorization (keyword-based)
 def categorize_question(question):
-    """Keyword-based categorization (no ML)."""
-    for category, keywords in TAXONOMY.items():
-        if any(kw in question.lower() for kw in keywords):
-            return category
+    question_lower = question.lower()
+    for cat, keywords in TAXONOMY.items():
+        if any(kw in question_lower for kw in keywords):
+            return cat
     return "Uncategorized"
 
-def compare_questions(new_questions, past_questions):
-    """Basic similarity check (built-in difflib)."""
-    similar = []
-    for new_q in new_questions:
-        for past_q in past_questions:
-            ratio = difflib.SequenceMatcher(None, new_q, past_q).ratio()
-            if ratio > 0.7:  # Threshold adjustable
-                similar.append((new_q, past_q, ratio))
-    return similar
-
-# -------------------------
-# Streamlit UI
-# -------------------------
+# --- UI ---
 st.title("CatchQ Prototype")
 
-# 1. Mock "Audio Upload" → Direct text input (skip STT for now)
-text = st.text_area("Paste discussion text (simulates speech-to-text):")
+# Audio input choice
+input_type = st.radio("Input type:", ["Record Audio (5s)", "Upload WAV"])
 
-if text:
-    # 2. Generate questions
-    questions = generate_questions(text)
-    st.subheader("Generated Questions")
+# Audio handling
+audio = None
+if input_type == "Record Audio (5s)":
+    if st.button("Start Recording"):
+        fs, audio = record_audio()
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            write(f.name, fs, audio)
+            st.session_state.audio_path = f.name
+elif input_type == "Upload WAV":
+    uploaded = st.file_uploader("Upload WAV", type=["wav"])
+    if uploaded:
+        st.session_state.audio_path = uploaded.name
+        with open(uploaded.name, "wb") as f:
+            f.write(uploaded.getvalue())
+
+# Transcribe & Process
+if "audio_path" in st.session_state:
+    model = load_whisper()
+    result = model.transcribe(st.session_state.audio_path)
+    text = result["text"]
+    
+    st.subheader("Transcript")
+    st.write(text)
+    
+    # Generate mock questions (same simple logic)
+    questions = [f"What is {text.split()[0]}?", 
+                 f"Why is {text.split()[0]} important?", 
+                 f"Challenge: {text.split()[0]}"]
+    
+    st.subheader("Categorized Questions")
     for q in questions:
-        st.write(f"- {q}")
-
-    # 3. Categorize questions
-    st.subheader("Categories")
-    categories = [categorize_question(q) for q in questions]
-    df = pd.DataFrame({"Question": questions, "Category": categories})
-    st.table(df)
-
-    # 4. Compare with past questions (mock persistence)
-    if st.button("Save for weekly comparison"):
-        st.session_state.questions.extend([
-            {"question": q, "category": c, "date": datetime.now()}
-            for q, c in zip(questions, categories)
-        ])
-
-# 5. Show trends (mock data)
-if st.session_state.questions:
-    st.subheader("Trends")
-    history = pd.DataFrame(st.session_state.questions)
-    history["date"] = pd.to_datetime(history["date"]).dt.strftime("%Y-%m-%d")
-    trend_data = history.groupby(["date", "category"]).size().unstack(fill_value=0)
-    st.line_chart(trend_data)
-
-# 6. Similarity check (compare all saved questions)
-if len(st.session_state.questions) > 1:
-    st.subheader("Similar Questions")
-    past_questions = [q["question"] for q in st.session_state.questions[:-1]]
-    new_questions = questions
-    similar = compare_questions(new_questions, past_questions)
-    if similar:
-        for new_q, past_q, ratio in similar:
-            st.write(f"**New:** {new_q}\n\n**Past:** {past_q}\n\nSimilarity: {ratio:.2f}")
+        cat = categorize_question(q)
+        st.write(f"**{cat}**: {q}")
