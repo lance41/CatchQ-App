@@ -1,4 +1,5 @@
 import streamlit as st
+import re
 import whisper
 from io import BytesIO
 import tempfile
@@ -15,7 +16,13 @@ TAXONOMY = {
 def load_whisper():
     return whisper.load_model("tiny.en")
 
-# Categorization (keyword-based)
+# Extract questions from text
+def extract_questions(text):
+    sentences = re.split(r'[.!?]', text)
+    questions = [s.strip() for s in sentences if re.search(r'\b(what|why|how|who|when|where|is|are|can|do)\b', s.lower())]
+    return questions
+
+# Categorize questions
 def categorize_question(question):
     question_lower = question.lower()
     for cat, keywords in TAXONOMY.items():
@@ -42,12 +49,12 @@ if "audio_path" in st.session_state:
     st.subheader("Transcript")
     st.write(text)
     
-    # Generate mock questions (same simple logic)
-    questions = [f"What is {text.split()[0]}?", 
-                 f"Why is {text.split()[0]} important?", 
-                 f"Challenge: {text.split()[0]}"]
-    
-    st.subheader("Categorized Questions")
-    for q in questions:
-        cat = categorize_question(q)
-        st.write(f"**{cat}**: {q}")
+    # Extract questions
+    questions = extract_questions(text)
+    if questions:
+        st.subheader("Extracted Questions")
+        categories = [categorize_question(q) for q in questions]
+        df = pd.DataFrame({"Question": questions, "Category": categories})
+        st.table(df)
+    else:
+        st.write("No questions found in the transcript.")
