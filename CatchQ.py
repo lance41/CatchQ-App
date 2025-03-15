@@ -29,22 +29,39 @@ st.title("CatchQ: AI-Powered Question Analyzer")
 
 @st.cache_resource
 def load_speech_recognizer():
-    return sr.Recognizer()
+    try:
+        return sr.Recognizer()
+    except Exception as e:
+        st.error(f"Failed to load speech recognizer: {e}")
+        st.stop()
 
 @st.cache_resource
 def load_question_generation_model():
-    model = T5ForConditionalGeneration.from_pretrained("valhalla/t5-small-qa-qg-hl")
-    tokenizer = T5Tokenizer.from_pretrained("valhalla/t5-small-qa-qg-hl")
-    return model, tokenizer
+    try:
+        model = T5ForConditionalGeneration.from_pretrained("valhalla/t5-small-qa-qg-hl")
+        tokenizer = T5Tokenizer.from_pretrained("valhalla/t5-small-qa-qg-hl")
+        return model, tokenizer
+    except Exception as e:
+        st.error(f"Failed to load question generation model: {e}")
+        st.stop()
 
 @st.cache_resource
 def load_zero_shot_classifier():
-    return pipeline("zero-shot-classification", model="facebook/bart-large-mnli")
+    try:
+        return pipeline("zero-shot-classification", model="facebook/bart-large-mnli")
+    except Exception as e:
+        st.error(f"Failed to load zero-shot classifier: {e}")
+        st.stop()
 
 @st.cache_resource
 def load_sentence_transformer():
-    return SentenceTransformer("all-MiniLM-L6-v2")
+    try:
+        return SentenceTransformer("all-MiniLM-L6-v2")
+    except Exception as e:
+        st.error(f"Failed to load sentence transformer: {e}")
+        st.stop()
 
+# Load models
 recognizer = load_speech_recognizer()
 qg_model, qg_tokenizer = load_question_generation_model()
 classifier = load_zero_shot_classifier()
@@ -70,9 +87,13 @@ if audio_file:
     # Extract Questions
     st.subheader("Extracted Questions")
     def extract_questions(text):
-        inputs = qg_tokenizer.encode("generate questions: " + text, return_tensors="pt", max_length=512, truncation=True)
-        outputs = qg_model.generate(inputs, max_length=50, num_return_sequences=5)
-        return [qg_tokenizer.decode(output, skip_special_tokens=True) for output in outputs]
+        try:
+            inputs = qg_tokenizer.encode("generate questions: " + text, return_tensors="pt", max_length=512, truncation=True)
+            outputs = qg_model.generate(inputs, max_length=50, num_return_sequences=5)
+            return [qg_tokenizer.decode(output, skip_special_tokens=True) for output in outputs]
+        except Exception as e:
+            st.error(f"Failed to extract questions: {e}")
+            return []
 
     questions = extract_questions(transcribed_text)
     for q in questions:
@@ -82,8 +103,12 @@ if audio_file:
     st.subheader("Categorized Questions")
     taxonomy = ["Conceptual", "Technical", "Application", "Miscellaneous"]
     def categorize_question(question, taxonomy):
-        result = classifier(question, taxonomy)
-        return result["labels"][0]  # Return the top category
+        try:
+            result = classifier(question, taxonomy)
+            return result["labels"][0]  # Return the top category
+        except Exception as e:
+            st.error(f"Failed to categorize question: {e}")
+            return "Unknown"
 
     categories = [categorize_question(q, taxonomy) for q in questions]
     for q, c in zip(questions, categories):
@@ -91,40 +116,46 @@ if audio_file:
 
     # Save Questions for Week-by-Week Comparison
     def save_questions(questions, categories):
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d")
-        data = {"question": questions, "category": categories, "timestamp": [timestamp] * len(questions)}
-        df = pd.DataFrame(data)
-        df.to_csv("questions.csv", mode="a", header=not os.path.exists("questions.csv"), index=False)
+        try:
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d")
+            data = {"question": questions, "category": categories, "timestamp": [timestamp] * len(questions)}
+            df = pd.DataFrame(data)
+            df.to_csv("questions.csv", mode="a", header=not os.path.exists("questions.csv"), index=False)
+        except Exception as e:
+            st.error(f"Failed to save questions: {e}")
 
     save_questions(questions, categories)
 
     # Trend Analysis
     st.subheader("Trend Analysis")
     if os.path.exists("questions.csv"):
-        df = pd.read_csv("questions.csv")
-        all_questions = df["question"].tolist()
-        embeddings = sbert_model.encode(all_questions)
-        similarity_matrix = cosine_similarity(embeddings)  # Use the manual implementation
+        try:
+            df = pd.read_csv("questions.csv")
+            all_questions = df["question"].tolist()
+            embeddings = sbert_model.encode(all_questions)
+            similarity_matrix = cosine_similarity(embeddings)  # Use the manual implementation
 
-        # Plot Similarity Matrix using Plotly
-        fig = go.Figure(data=go.Heatmap(
-            z=similarity_matrix,
-            x=all_questions,
-            y=all_questions,
-            colorscale="Viridis"
-        ))
-        fig.update_layout(
-            xaxis=dict(tickangle=90),
-            yaxis=dict(autorange="reversed"),
-            title="Question Similarity Matrix"
-        )
-        st.plotly_chart(fig)
+            # Plot Similarity Matrix using Plotly
+            fig = go.Figure(data=go.Heatmap(
+                z=similarity_matrix,
+                x=all_questions,
+                y=all_questions,
+                colorscale="Viridis"
+            ))
+            fig.update_layout(
+                xaxis=dict(tickangle=90),
+                yaxis=dict(autorange="reversed"),
+                title="Question Similarity Matrix"
+            )
+            st.plotly_chart(fig)
 
-        # Week-by-Week Comparison
-        st.subheader("Week-by-Week Comparison")
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
-        weekly_questions = df.groupby(df["timestamp"].dt.strftime("%Y-%U"))["question"].apply(list).reset_index()
-        st.write(weekly_questions)
+            # Week-by-Week Comparison
+            st.subheader("Week-by-Week Comparison")
+            df["timestamp"] = pd.to_datetime(df["timestamp"])
+            weekly_questions = df.groupby(df["timestamp"].dt.strftime("%Y-%U"))["question"].apply(list).reset_index()
+            st.write(weekly_questions)
+        except Exception as e:
+            st.error(f"Failed to analyze trends: {e}")
 
     # Download Results
     st.subheader("Download Results")
