@@ -1,5 +1,4 @@
 import streamlit as st
-import re
 import whisper
 from io import BytesIO
 import tempfile
