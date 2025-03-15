@@ -3,12 +3,26 @@ import speech_recognition as sr
 import pandas as pd
 import torch
 import numpy as np
-import plotly.graph_objects as go  # Replaced matplotlib with plotly
-from sklearn.metrics.pairwise import cosine_similarity
+import plotly.graph_objects as go
 from transformers import pipeline, T5ForConditionalGeneration, T5Tokenizer
 from sentence_transformers import SentenceTransformer
 import datetime
 import os
+
+# Manual cosine similarity implementation
+def cosine_similarity(embeddings):
+    """
+    Compute the cosine similarity matrix for a set of embeddings.
+    :param embeddings: A 2D numpy array of shape (n_samples, n_features).
+    :return: A 2D numpy array of shape (n_samples, n_samples) containing pairwise cosine similarities.
+    """
+    # Normalize the embeddings
+    norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+    normalized_embeddings = embeddings / norms
+
+    # Compute the cosine similarity matrix
+    similarity_matrix = np.dot(normalized_embeddings, normalized_embeddings.T)
+    return similarity_matrix
 
 # Load SpeechRecognition
 st.title("CatchQ: AI-Powered Question Analyzer")
@@ -90,7 +104,7 @@ if audio_file:
         df = pd.read_csv("questions.csv")
         all_questions = df["question"].tolist()
         embeddings = sbert_model.encode(all_questions)
-        similarity_matrix = cosine_similarity(embeddings)
+        similarity_matrix = cosine_similarity(embeddings)  # Use the manual implementation
 
         # Plot Similarity Matrix using Plotly
         fig = go.Figure(data=go.Heatmap(
