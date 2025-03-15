@@ -1,12 +1,9 @@
 numpy==1.25.2
-numba==0.59.0
 streamlit==1.32.0
 pandas==2.1.4
 plotly==5.18.0
 transformers==4.36.2
-sentence-transformers==2.2.2
 torch==2.1.2 --index-url https://download.pytorch.org/whl/cpu
 sentencepiece==0.2.0
 SpeechRecognition==3.10.0
-pydub==0.25.1
-huggingface_hub==0.4.0  # Add this to fix the `cached_download` issue
+gensim==4.3.2
