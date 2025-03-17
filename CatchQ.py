@@ -1,71 +1,98 @@
 import streamlit as st
-import speech_recognition as sr
-from io import BytesIO
-from pydub import AudioSegment
-import re
 import pandas as pd
+from datetime import datetime
+import difflib
+import re
 
-# Hardcoded taxonomy (customize as needed)
+# Updated taxonomy (Content, Context, Contest)
 TAXONOMY = {
     "Content": ["what is", "define", "explain", "describe"],
     "Context": ["why is", "background", "history", "related to"],
     "Contest": ["challenge", "disagree", "alternative", "critique"]
 }
 
-# Initialize recognizer
-recognizer = sr.Recognizer()
+# Mock data storage
+if "questions" not in st.session_state:
+    st.session_state.questions = []
 
-# Extract questions from text
+# -------------------------
+# Core Functions
+# -------------------------
 def extract_questions(text):
+    """Extract questions using regex."""
     sentences = re.split(r'[.!?]', text)
-    questions = [s.strip() for s in sentences if re.search(r'\b(what|why|how|who|when|where|is|are|can|do)\b', s.lower())]
+    question_pattern = re.compile(
+        r'(?i)^\s*(what|why|how|who|when|where|is|are|can|do)\b.*'
+    )
+    questions = []
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+        if re.match(question_pattern, sentence) or sentence.endswith("?"):
+            questions.append(sentence)
     return questions
 
-# Categorize questions
 def categorize_question(question):
+    """Keyword-based categorization."""
     question_lower = question.lower()
     for cat, keywords in TAXONOMY.items():
         if any(kw in question_lower for kw in keywords):
             return cat
     return "Uncategorized"
 
-# --- UI ---
+def compare_questions(new_questions, past_questions):
+    """Similarity check using difflib."""
+    similar = []
+    for new_q in new_questions:
+        for past_q in past_questions:
+            ratio = difflib.SequenceMatcher(None, new_q, past_q).ratio()
+            if ratio > 0.7:
+                similar.append((new_q, past_q, ratio))
+    return similar
+
+# -------------------------
+# Streamlit UI
+# -------------------------
 st.title("CatchQ Prototype")
 
-# Audio file upload
-uploaded_file = st.file_uploader("Upload an audio file", type=["wav", "mp3"])
-if uploaded_file:
-    with BytesIO(uploaded_file.getvalue()) as audio_file:
-        try:
-            # Convert MP3 to WAV if necessary
-            if uploaded_file.type == "audio/mp3":
-                audio = AudioSegment.from_mp3(audio_file)
-                wav_file = BytesIO()
-                audio.export(wav_file, format="wav")
-                wav_file.seek(0)
-                audio_file = wav_file
+# Text input
+text = st.text_area("Paste discussion text:")
 
-            # Process the audio file
-            with sr.AudioFile(audio_file) as source:
-                audio = recognizer.record(source)
-                try:
-                    # Use Google Web Speech API for transcription
-                    text = recognizer.recognize_google(audio)
-                    st.subheader("Transcript")
-                    st.write(text)
+if text:
+    # Extract questions
+    questions = extract_questions(text)
+    st.subheader("Extracted Questions")
+    for q in questions:
+        st.write(f"- {q}")
 
-                    # Extract questions
-                    questions = extract_questions(text)
-                    if questions:
-                        st.subheader("Extracted Questions")
-                        categories = [categorize_question(q) for q in questions]
-                        df = pd.DataFrame({"Question": questions, "Category": categories})
-                        st.table(df)
-                    else:
-                        st.write("No questions found in the transcript.")
-                except sr.UnknownValueError:
-                    st.error("Google Web Speech API could not understand the audio.")
-                except sr.RequestError:
-                    st.error("Could not request results from Google Web Speech API.")
-        except Exception as e:
-            st.error(f"Error processing audio file: {e}")
+    # Categorize questions
+    st.subheader("Categories")
+    categories = [categorize_question(q) for q in questions]
+    df = pd.DataFrame({"Question": questions, "Category": categories})
+    st.table(df)
+
+    # Save for comparison
+    if st.button("Save for weekly comparison"):
+        st.session_state.questions.extend([
+            {"question": q, "category": c, "date": datetime.now()}
+            for q, c in zip(questions, categories)
+        ])
+
+# Show trends
+if st.session_state.questions:
+    st.subheader("Trends")
+    history = pd.DataFrame(st.session_state.questions)
+    history["date"] = pd.to_datetime(history["date"]).dt.strftime("%Y-%m-%d")
+    trend_data = history.groupby(["date", "category"]).size().unstack(fill_value=0)
+    st.line_chart(trend_data)
+
+# Similarity check
+if len(st.session_state.questions) > 1:
+    st.subheader("Similar Questions")
+    past_questions = [q["question"] for q in st.session_state.questions[:-1]]
+    new_questions = questions
+    similar = compare_questions(new_questions, past_questions)
+    if similar:
+        for new_q, past_q, ratio in similar:
+            st.write(f"**New:** {new_q}\n\n**Past:** {past_q}\n\nSimilarity: {ratio:.2f}")
