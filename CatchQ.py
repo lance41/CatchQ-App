@@ -88,17 +88,16 @@ if text:
     df_this_week = pd.DataFrame({"Question": this_week_questions, "Category": this_week_categories})
     st.table(df_this_week)
 
-# **Step 2: Paste Last Week's Questions (CSV Format)**
-st.subheader("Paste Last Week's Questions (CSV Format)")
-
-last_week_questions_text = st.text_area("Paste last week's questions here in CSV format:")
+# **Step 2: Upload Last Week's Questions (CSV Format)**
+st.subheader("Upload Last Week's Questions (CSV Format)")
+last_week_file = st.file_uploader("Upload last week's CSV file", type=["csv"])
 
 past_questions = []
 past_categories = []
 
-if last_week_questions_text:
+if last_week_file:
     try:
-        past_df = pd.read_csv(io.StringIO(last_week_questions_text))
+        past_df = pd.read_csv(last_week_file)
         if "Question" in past_df.columns and "Category" in past_df.columns:
             past_questions = past_df["Question"].tolist()
             past_categories = past_df["Category"].tolist()
