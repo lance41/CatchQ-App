@@ -64,7 +64,7 @@ def count_categories(questions, categories):
 # Streamlit UI
 # -------------------------
 
-st.title("CatchQ: Weekly Question Comparison")
+st.title("CatchQ: Weekly Question Comparison & Trends")
 
 # **Step 1: Paste This Week's Discussion Text**
 st.subheader("Paste This Week's Discussion Text")
@@ -119,6 +119,11 @@ if past_questions and this_week_questions:
         "This Week": [this_week_counts.get(cat, 0) for cat in categories]
     })
 
+    # Calculate Percentage Change
+    comparison_df["Change (%)"] = (
+        (comparison_df["This Week"] - comparison_df["Last Week"]) / comparison_df["Last Week"] * 100
+    ).replace([float("inf"), float("-inf")], "New").fillna(0)
+
     # Display comparison table
     st.table(comparison_df)
 
@@ -126,7 +131,25 @@ if past_questions and this_week_questions:
     st.subheader("Category Distribution Comparison")
     st.bar_chart(comparison_df.set_index("Category"))
 
-# **Step 4: Download This Week's Questions for Next Week's Use**
+# **Step 4: Upload Historical Data for Trend Analysis**
+st.subheader("Upload CSV for Trend Analysis (Multiple Weeks)")
+uploaded_file = st.file_uploader("Upload CSV file with historical weekly data", type=["csv"])
+
+if uploaded_file:
+    try:
+        history_df = pd.read_csv(uploaded_file)
+        
+        if "Week" in history_df.columns and "Content" in history_df.columns and "Context" in history_df.columns and "Contest" in history_df.columns:
+            st.subheader("Trend Analysis Over Multiple Weeks")
+            history_df.set_index("Week", inplace=True)
+            st.line_chart(history_df)
+        else:
+            st.error("CSV format should include columns: 'Week', 'Content', 'Context', 'Contest'")
+    
+    except Exception as e:
+        st.error(f"Error reading CSV: {e}")
+
+# **Step 5: Download This Week's Questions for Next Week's Use**
 if this_week_questions:
     st.subheader("Download This Week's Questions for Next Week")
     this_week_df = pd.DataFrame({"Question": this_week_questions, "Category": this_week_categories})
