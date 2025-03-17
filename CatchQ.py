@@ -4,11 +4,21 @@ from datetime import datetime
 import difflib
 import re
 
-# Updated taxonomy (Content, Context, Contest)
+# Updated taxonomy with expanded keywords
 TAXONOMY = {
-    "Content": ["what is", "define", "explain", "describe"],
-    "Context": ["why is", "background", "history", "related to"],
-    "Contest": ["challenge", "disagree", "alternative", "critique"]
+    "Content": [
+        "what is", "define", "explain", "describe", "definition", 
+        "explanation", "meaning", "what are", "what does"
+    ],
+    "Context": [
+        "why is", "background", "history", "related to", "cause of", 
+        "reason for", "origin of", "relate to", "connection", "context"
+    ],
+    "Contest": [
+        "challenge", "disagree", "alternative", "critique", "problem with",
+        "issue with", "limitation", "objection", "argument against", "learned",
+        "innate", "nature vs nurture", "alternative to", "replace", "improve"
+    ]
 }
 
 # Mock data storage
@@ -34,10 +44,17 @@ def extract_questions(text):
     return questions
 
 def categorize_question(question):
-    """Keyword-based categorization."""
+    """Categorize questions with regex and custom rules."""
     question_lower = question.lower()
+    
+    # Custom rule for "learned vs innate" questions
+    if "learned" in question_lower and ("innate" in question_lower or "nature" in question_lower):
+        return "Contest"
+    
+    # Regex-based keyword matching
     for cat, keywords in TAXONOMY.items():
-        if any(kw in question_lower for kw in keywords):
+        pattern = re.compile(r'\b(' + '|'.join(keywords) + r')\b')
+        if pattern.search(question_lower):
             return cat
     return "Uncategorized"
 
