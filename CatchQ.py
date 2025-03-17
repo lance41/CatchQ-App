@@ -4,6 +4,11 @@ from datetime import datetime
 import re
 import io
 
+# Function to generate week options dynamically
+def generate_week_options():
+    current_year = datetime.now().year
+    return [f"{current_year}-Week-{str(i).zfill(2)}" for i in range(1, 53)]
+
 # Updated taxonomy with expanded keywords
 TAXONOMY = {
     "Content": [
@@ -131,29 +136,53 @@ if past_questions and this_week_questions:
     st.subheader("Category Distribution Comparison")
     st.bar_chart(comparison_df.set_index("Category"))
 
-# **Step 4: Upload Historical Data for Trend Analysis**
-st.subheader("Upload CSV for Trend Analysis (Multiple Weeks)")
-uploaded_file = st.file_uploader("Upload CSV file with historical weekly data", type=["csv"])
+# **Step 4: Download This Week's Questions for Next Week**
+st.subheader("Download This Week's Questions for Next Week")
 
-if uploaded_file:
-    try:
-        history_df = pd.read_csv(uploaded_file)
-        
-        if "Week" in history_df.columns and "Content" in history_df.columns and "Context" in history_df.columns and "Contest" in history_df.columns:
-            st.subheader("Trend Analysis Over Multiple Weeks")
-            history_df.set_index("Week", inplace=True)
-            st.line_chart(history_df)
-        else:
-            st.error("CSV format should include columns: 'Week', 'Content', 'Context', 'Contest'")
-    
-    except Exception as e:
-        st.error(f"Error reading CSV: {e}")
+# Dropdown for selecting the week
+week_options = generate_week_options()
+selected_week = st.selectbox("Select Week", week_options)
 
-# **Step 5: Download This Week's Questions for Next Week's Use**
 if this_week_questions:
-    st.subheader("Download This Week's Questions for Next Week")
     this_week_df = pd.DataFrame({"Question": this_week_questions, "Category": this_week_categories})
     
+    # Generate a filename with the selected week
+    filename = f"questions_{selected_week.replace(' ', '-')}.csv"
+    
     csv = this_week_df.to_csv(index=False)
-    st.download_button("Download CSV", csv, "this_week_questions.csv", "text/csv")
+    st.download_button(f"Download {selected_week} CSV", csv, filename, "text/csv")
 
+# **Step 5: Upload Multiple Weekly CSVs for Trend Analysis**
+st.subheader("Upload Multiple CSVs for Trend Analysis")
+
+uploaded_files = st.file_uploader("Upload multiple CSV files", type=["csv"], accept_multiple_files=True)
+
+if uploaded_files:
+    all_weeks_data = []
+    
+    for uploaded_file in uploaded_files:
+        try:
+            df = pd.read_csv(uploaded_file)
+
+            # Ensure the file contains valid columns
+            if "Week" in df.columns and "Content" in df.columns and "Context" in df.columns and "Contest" in df.columns:
+                all_weeks_data.append(df)
+            else:
+                st.error(f"Incorrect format in {uploaded_file.name}. Required columns: 'Week', 'Content', 'Context', 'Contest'")
+        except Exception as e:
+            st.error(f"Error reading {uploaded_file.name}: {e}")
+
+    if all_weeks_data:
+        # Merge all CSV files into one DataFrame
+        historical_df = pd.concat(all_weeks_data, ignore_index=True)
+
+        # Sort by Week
+        historical_df = historical_df.sort_values(by="Week")
+
+        st.subheader("Merged Historical Data")
+        st.table(historical_df)
+
+        # Plot trend chart
+        st.subheader("Trend Analysis Over Multiple Weeks")
+        historical_df.set_index("Week", inplace=True)
+        st.line_chart(historical_df)
