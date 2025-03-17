@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime
 import difflib
 import re
+import io
 
 # Updated taxonomy with expanded keywords
 TAXONOMY = {
@@ -21,13 +22,10 @@ TAXONOMY = {
     ]
 }
 
-# Mock data storage
-if "questions" not in st.session_state:
-    st.session_state.questions = []
-
 # -------------------------
 # Core Functions
 # -------------------------
+
 def extract_questions(text):
     """Extract questions using regex."""
     sentences = re.split(r'[.!?]', text)
@@ -71,45 +69,55 @@ def compare_questions(new_questions, past_questions):
 # -------------------------
 # Streamlit UI
 # -------------------------
+
 st.title("CatchQ Prototype")
 
-# Text input
+# **Step 1: Paste last week's questions (CSV format)**
+st.subheader("Paste Last Week's Questions (CSV Format)")
+
+last_week_questions_text = st.text_area("Paste last week's questions here in CSV format:")
+
+past_questions = []
+if last_week_questions_text:
+    try:
+        past_df = pd.read_csv(io.StringIO(last_week_questions_text))
+        if "Question" in past_df.columns:
+            past_questions = past_df["Question"].tolist()
+    except Exception as e:
+        st.error(f"Error reading CSV: {e}")
+
+# **Step 2: Enter this week's discussion text**
+st.subheader("Paste This Week's Discussion Text")
 text = st.text_area("Paste discussion text:")
 
-if text:
-    # Extract questions
-    questions = extract_questions(text)
-    st.subheader("Extracted Questions")
-    for q in questions:
-        st.write(f"- {q}")
+this_week_questions = []
+this_week_categories = []
 
-    # Categorize questions
-    st.subheader("Categories")
-    categories = [categorize_question(q) for q in questions]
-    df = pd.DataFrame({"Question": questions, "Category": categories})
+if text:
+    # Extract and categorize questions
+    this_week_questions = extract_questions(text)
+    this_week_categories = [categorize_question(q) for q in this_week_questions]
+
+    # Display extracted questions
+    st.subheader("Extracted Questions")
+    df = pd.DataFrame({"Question": this_week_questions, "Category": this_week_categories})
     st.table(df)
 
-    # Save for comparison
-    if st.button("Save for weekly comparison"):
-        st.session_state.questions.extend([
-            {"question": q, "category": c, "date": datetime.now()}
-            for q, c in zip(questions, categories)
-        ])
+# **Step 3: Compare This Week's Questions with Last Week's**
+if past_questions and this_week_questions:
+    st.subheader("Similar Questions from Last Week and This Week")
+    similar_questions = compare_questions(this_week_questions, past_questions)
 
-# Show trends
-if st.session_state.questions:
-    st.subheader("Trends")
-    history = pd.DataFrame(st.session_state.questions)
-    history["date"] = pd.to_datetime(history["date"]).dt.strftime("%Y-%m-%d")
-    trend_data = history.groupby(["date", "category"]).size().unstack(fill_value=0)
-    st.line_chart(trend_data)
-
-# Similarity check
-if len(st.session_state.questions) > 1:
-    st.subheader("Similar Questions")
-    past_questions = [q["question"] for q in st.session_state.questions[:-1]]
-    new_questions = questions
-    similar = compare_questions(new_questions, past_questions)
-    if similar:
-        for new_q, past_q, ratio in similar:
+    if similar_questions:
+        for new_q, past_q, ratio in similar_questions:
             st.write(f"**New:** {new_q}\n\n**Past:** {past_q}\n\nSimilarity: {ratio:.2f}")
+    else:
+        st.write("No similar questions found.")
+
+# **Step 4: Download This Week's Questions for Next Week's Use**
+if this_week_questions:
+    st.subheader("Download This Week's Questions for Next Week")
+    this_week_df = pd.DataFrame({"Question": this_week_questions, "Category": this_week_categories})
+    
+    csv = this_week_df.to_csv(index=False)
+    st.download_button("Download CSV", csv, "this_week_questions.csv", "text/csv")
