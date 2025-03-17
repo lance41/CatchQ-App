@@ -11,19 +11,9 @@ def generate_week_options():
 
 # Updated taxonomy with expanded keywords
 TAXONOMY = {
-    "Content": [
-        "what is", "define", "explain", "describe", "definition", 
-        "explanation", "meaning", "what are", "what does"
-    ],
-    "Context": [
-        "why is", "background", "history", "related to", "cause of", 
-        "reason for", "origin of", "relate to", "connection", "context"
-    ],
-    "Contest": [
-        "challenge", "disagree", "alternative", "critique", "problem with",
-        "issue with", "limitation", "objection", "argument against", "learned",
-        "innate", "nature vs nurture", "alternative to", "replace", "improve"
-    ]
+    "Content": ["what is", "define", "explain", "describe", "definition", "explanation", "meaning", "what are", "what does"],
+    "Context": ["why is", "background", "history", "related to", "cause of", "reason for", "origin of", "relate to", "connection", "context"],
+    "Contest": ["challenge", "disagree", "alternative", "critique", "problem with", "issue with", "limitation", "objection", "argument against", "learned", "innate", "nature vs nurture", "alternative to", "replace", "improve"]
 }
 
 # -------------------------
@@ -33,30 +23,19 @@ TAXONOMY = {
 def extract_questions(text):
     """Extract questions using regex."""
     sentences = re.split(r'[.!?]', text)
-    question_pattern = re.compile(
-        r'(?i)^\s*(what|why|how|who|when|where|is|are|can|do)\b.*'
-    )
-    questions = []
-    for sentence in sentences:
-        sentence = sentence.strip()
-        if not sentence:
-            continue
-        if re.match(question_pattern, sentence) or sentence.endswith("?"):
-            questions.append(sentence)
+    question_pattern = re.compile(r'(?i)^\s*(what|why|how|who|when|where|is|are|can|do)\b.*')
+    questions = [s.strip() for s in sentences if re.match(question_pattern, s.strip()) or s.strip().endswith("?")]
     return questions
 
 def categorize_question(question):
-    """Categorize questions with regex and custom rules."""
+    """Categorize questions using regex and custom rules."""
     question_lower = question.lower()
     
-    # Custom rule for "learned vs innate" questions
     if "learned" in question_lower and ("innate" in question_lower or "nature" in question_lower):
         return "Contest"
-    
-    # Regex-based keyword matching
+
     for cat, keywords in TAXONOMY.items():
-        pattern = re.compile(r'\b(' + '|'.join(keywords) + r')\b')
-        if pattern.search(question_lower):
+        if re.search(r'\b(' + '|'.join(keywords) + r')\b', question_lower):
             return cat
     return "Uncategorized"
 
@@ -77,11 +56,13 @@ text = st.text_area("Paste discussion text:")
 
 this_week_questions = []
 this_week_categories = []
+this_week_counts = {}
 
 if text:
     # Extract and categorize questions
     this_week_questions = extract_questions(text)
     this_week_categories = [categorize_question(q) for q in this_week_questions]
+    this_week_counts = count_categories(this_week_questions, this_week_categories)  # Ensure this is defined
 
     # Display extracted questions
     st.subheader("This Week's Extracted Questions")
@@ -102,7 +83,7 @@ if last_week_file:
             past_questions = past_df["Question"].tolist()
             past_categories = past_df["Category"].tolist()
             
-            # Display last week's questions below this week's
+            # Display last week's questions
             st.subheader("Last Week's Questions")
             st.table(past_df)
     except Exception as e:
@@ -113,7 +94,6 @@ if past_questions and this_week_questions:
     st.subheader("Category Comparison: Last Week vs This Week")
     
     past_counts = count_categories(past_questions, past_categories)
-    this_week_counts = count_categories(this_week_questions, this_week_categories)
 
     # Convert to DataFrame for better visualization
     categories = ["Content", "Context", "Contest"]
@@ -124,9 +104,7 @@ if past_questions and this_week_questions:
     })
 
     # Calculate Percentage Change
-    comparison_df["Change (%)"] = (
-        (comparison_df["This Week"] - comparison_df["Last Week"]) / comparison_df["Last Week"] * 100
-    ).replace([float("inf"), float("-inf")], "New").fillna(0)
+    comparison_df["Change (%)"] = ((comparison_df["This Week"] - comparison_df["Last Week"]) / comparison_df["Last Week"] * 100).replace([float("inf"), float("-inf")], "New").fillna(0)
 
     # Display comparison table
     st.table(comparison_df)
@@ -143,22 +121,23 @@ week_options = generate_week_options()
 selected_week = st.selectbox("Select Week", week_options)
 
 if this_week_questions:
+    # Create DataFrames
     this_week_df = pd.DataFrame({"Question": this_week_questions, "Category": this_week_categories})
-    
-    # Generate filenames with the selected week
-    questions_filename = f"questions_{selected_week.replace(' ', '-')}.csv"
-    counts_filename = f"category_counts_{selected_week.replace(' ', '-')}.csv"
-    
-    # Save CSVs
-    csv_questions = this_week_df.to_csv(index=False)
     this_week_counts_df = pd.DataFrame({
         "Week": [selected_week],
         "Content": [this_week_counts.get("Content", 0)],
         "Context": [this_week_counts.get("Context", 0)],
         "Contest": [this_week_counts.get("Contest", 0)]
     })
+
+    # Generate filenames with the selected week
+    questions_filename = f"questions_{selected_week.replace(' ', '-')}.csv"
+    counts_filename = f"category_counts_{selected_week.replace(' ', '-')}.csv"
+
+    # Convert to CSV
+    csv_questions = this_week_df.to_csv(index=False)
     csv_counts = this_week_counts_df.to_csv(index=False)
-    
+
     # Download buttons
     st.download_button(f"Download {selected_week} Questions CSV", csv_questions, questions_filename, "text/csv")
     st.download_button(f"Download {selected_week} Category Counts CSV", csv_counts, counts_filename, "text/csv")
