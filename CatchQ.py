@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-import difflib
 import re
 import io
 
@@ -56,37 +55,18 @@ def categorize_question(question):
             return cat
     return "Uncategorized"
 
-def compare_questions(new_questions, past_questions):
-    """Similarity check using difflib."""
-    similar = []
-    for new_q in new_questions:
-        for past_q in past_questions:
-            ratio = difflib.SequenceMatcher(None, new_q, past_q).ratio()
-            if ratio > 0.7:
-                similar.append((new_q, past_q, ratio))
-    return similar
+def count_categories(questions, categories):
+    """Count the number of questions in each category."""
+    df = pd.DataFrame({"Question": questions, "Category": categories})
+    return df["Category"].value_counts().to_dict()
 
 # -------------------------
 # Streamlit UI
 # -------------------------
 
-st.title("CatchQ Prototype")
+st.title("CatchQ: Weekly Question Comparison")
 
-# **Step 1: Paste last week's questions (CSV format)**
-st.subheader("Paste Last Week's Questions (CSV Format)")
-
-last_week_questions_text = st.text_area("Paste last week's questions here in CSV format:")
-
-past_questions = []
-if last_week_questions_text:
-    try:
-        past_df = pd.read_csv(io.StringIO(last_week_questions_text))
-        if "Question" in past_df.columns:
-            past_questions = past_df["Question"].tolist()
-    except Exception as e:
-        st.error(f"Error reading CSV: {e}")
-
-# **Step 2: Enter this week's discussion text**
+# **Step 1: Paste This Week's Discussion Text**
 st.subheader("Paste This Week's Discussion Text")
 text = st.text_area("Paste discussion text:")
 
@@ -99,20 +79,52 @@ if text:
     this_week_categories = [categorize_question(q) for q in this_week_questions]
 
     # Display extracted questions
-    st.subheader("Extracted Questions")
-    df = pd.DataFrame({"Question": this_week_questions, "Category": this_week_categories})
-    st.table(df)
+    st.subheader("This Week's Extracted Questions")
+    df_this_week = pd.DataFrame({"Question": this_week_questions, "Category": this_week_categories})
+    st.table(df_this_week)
 
-# **Step 3: Compare This Week's Questions with Last Week's**
+# **Step 2: Paste Last Week's Questions (CSV Format)**
+st.subheader("Paste Last Week's Questions (CSV Format)")
+
+last_week_questions_text = st.text_area("Paste last week's questions here in CSV format:")
+
+past_questions = []
+past_categories = []
+
+if last_week_questions_text:
+    try:
+        past_df = pd.read_csv(io.StringIO(last_week_questions_text))
+        if "Question" in past_df.columns and "Category" in past_df.columns:
+            past_questions = past_df["Question"].tolist()
+            past_categories = past_df["Category"].tolist()
+            
+            # Display last week's questions below this week's
+            st.subheader("Last Week's Questions")
+            st.table(past_df)
+    except Exception as e:
+        st.error(f"Error reading CSV: {e}")
+
+# **Step 3: Compare Question Category Counts**
 if past_questions and this_week_questions:
-    st.subheader("Similar Questions from Last Week and This Week")
-    similar_questions = compare_questions(this_week_questions, past_questions)
+    st.subheader("Category Comparison: Last Week vs This Week")
+    
+    past_counts = count_categories(past_questions, past_categories)
+    this_week_counts = count_categories(this_week_questions, this_week_categories)
 
-    if similar_questions:
-        for new_q, past_q, ratio in similar_questions:
-            st.write(f"**New:** {new_q}\n\n**Past:** {past_q}\n\nSimilarity: {ratio:.2f}")
-    else:
-        st.write("No similar questions found.")
+    # Convert to DataFrame for better visualization
+    categories = ["Content", "Context", "Contest"]
+    comparison_df = pd.DataFrame({
+        "Category": categories,
+        "Last Week": [past_counts.get(cat, 0) for cat in categories],
+        "This Week": [this_week_counts.get(cat, 0) for cat in categories]
+    })
+
+    # Display comparison table
+    st.table(comparison_df)
+
+    # Display bar chart
+    st.subheader("Category Distribution Comparison")
+    st.bar_chart(comparison_df.set_index("Category"))
 
 # **Step 4: Download This Week's Questions for Next Week's Use**
 if this_week_questions:
@@ -121,3 +133,4 @@ if this_week_questions:
     
     csv = this_week_df.to_csv(index=False)
     st.download_button("Download CSV", csv, "this_week_questions.csv", "text/csv")
+
