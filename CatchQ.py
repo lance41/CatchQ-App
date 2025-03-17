@@ -135,8 +135,8 @@ if past_questions and this_week_questions:
     st.subheader("Category Distribution Comparison")
     st.bar_chart(comparison_df.set_index("Category"))
 
-# **Step 4: Download This Week's Questions for Next Week**
-st.subheader("Download This Week's Questions for Next Week")
+# **Step 4: Download This Week's Questions & Counts for Trend Analysis**
+st.subheader("Download This Week's Data")
 
 # Dropdown for selecting the week
 week_options = generate_week_options()
@@ -145,11 +145,23 @@ selected_week = st.selectbox("Select Week", week_options)
 if this_week_questions:
     this_week_df = pd.DataFrame({"Question": this_week_questions, "Category": this_week_categories})
     
-    # Generate a filename with the selected week
-    filename = f"questions_{selected_week.replace(' ', '-')}.csv"
+    # Generate filenames with the selected week
+    questions_filename = f"questions_{selected_week.replace(' ', '-')}.csv"
+    counts_filename = f"category_counts_{selected_week.replace(' ', '-')}.csv"
     
-    csv = this_week_df.to_csv(index=False)
-    st.download_button(f"Download {selected_week} CSV", csv, filename, "text/csv")
+    # Save CSVs
+    csv_questions = this_week_df.to_csv(index=False)
+    this_week_counts_df = pd.DataFrame({
+        "Week": [selected_week],
+        "Content": [this_week_counts.get("Content", 0)],
+        "Context": [this_week_counts.get("Context", 0)],
+        "Contest": [this_week_counts.get("Contest", 0)]
+    })
+    csv_counts = this_week_counts_df.to_csv(index=False)
+    
+    # Download buttons
+    st.download_button(f"Download {selected_week} Questions CSV", csv_questions, questions_filename, "text/csv")
+    st.download_button(f"Download {selected_week} Category Counts CSV", csv_counts, counts_filename, "text/csv")
 
 # **Step 5: Upload Multiple Weekly CSVs for Trend Analysis**
 st.subheader("Upload Multiple CSVs for Trend Analysis")
